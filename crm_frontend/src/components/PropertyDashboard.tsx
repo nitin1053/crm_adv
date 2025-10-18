@@ -9,25 +9,36 @@ import {
   BarChart3, 
   Plus,
   Brain,
-  Search,
-  Filter
+  Building2,
+  Users,
+  Star,
+  Target,
+  Zap
 } from 'lucide-react';
 import PropertyList from './PropertyList';
 import PropertyForm from './PropertyForm';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 
 const PropertyDashboard: React.FC = () => {
   const [stats, setStats] = useState<PropertyStats | null>(null);
+  const navigate = useNavigate();
+  const { hasRole } = useAuth();
   const [loading, setLoading] = useState(true);
+  const canManage = hasRole('ROLE_MANAGER') || hasRole('ROLE_ADMIN');
+  const [error, setError] = useState('');
   const [showPropertyForm, setShowPropertyForm] = useState(false);
   const [selectedProperty, setSelectedProperty] = useState<PropertyResponse | null>(null);
 
   const loadStats = async () => {
     try {
       setLoading(true);
+      setError('');
       const data = await propertyService.getPropertyStats();
       setStats(data);
     } catch (error) {
       console.error('Failed to load property stats:', error);
+      setError('Failed to load property statistics');
     } finally {
       setLoading(false);
     }
@@ -45,7 +56,7 @@ const PropertyDashboard: React.FC = () => {
   const handleCloseForm = () => {
     setShowPropertyForm(false);
     setSelectedProperty(null);
-    loadStats(); // Refresh stats after form closes
+    loadStats();
   };
 
   const formatPrice = (price: number | string | undefined) => {
@@ -62,164 +73,241 @@ const PropertyDashboard: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="flex justify-center items-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-600 border-t-transparent mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading property insights...</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="property-dashboard">
-      {/* Header */}
-      <div className="mb-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Property Management</h1>
-            <p className="text-gray-600 mt-2">Manage your real estate portfolio with AI-powered insights</p>
+    <div className="min-h-screen bg-gray-50">
+      {/* Header Section */}
+      <div className="bg-white shadow-sm border-b">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between py-6">
+            <div className="flex items-center space-x-3">
+              <div className="p-2 bg-blue-600 rounded-lg">
+                <Building2 className="text-white h-6 w-6" />
+              </div>
+              <div>
+                <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Property Hub</h1>
+                <p className="text-gray-600 text-sm sm:text-base">Manage your real estate portfolio</p>
+              </div>
+            </div>
+            { (hasRole('ROLE_MANAGER') || hasRole('ROLE_ADMIN')) && (
+              <button
+                onClick={() => navigate('/properties/new')}
+                className="mt-4 sm:mt-0 inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200"
+              >
+                <Plus className="h-5 w-5 mr-2" />
+                Add Property
+              </button>
+            )}
           </div>
-          <button
-            onClick={() => setShowPropertyForm(true)}
-            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
-          >
-            <Plus size={20} />
-            Add Property
-          </button>
         </div>
       </div>
 
-      {/* Stats Overview */}
-      {stats && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <div className="bg-white p-6 rounded-lg shadow-md">
-            <div className="flex items-center">
-              <div className="p-3 bg-green-100 rounded-lg">
-                <Home className="text-green-600" size={24} />
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+        {/* Error Banner */}
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded flex items-center justify-between">
+            <span>{error}</span>
+            <button onClick={loadStats} className="ml-4 px-3 py-1 text-sm bg-red-100 text-red-800 rounded hover:bg-red-200">Retry</button>
+          </div>
+        )}
+
+        {/* Stats Overview */}
+        {stats && (
+          <div className="gap-6" style={{ display: 'flex', overflowX: 'auto', paddingBottom: '8px' }}>
+            <div className="bg-white rounded-lg shadow-sm border p-6 hover:shadow-md transition-shadow" style={{ minWidth: 260, flex: '0 0 auto' }}>
+              <div className="flex items-center">
+                <div className="p-3 bg-green-100 rounded-lg">
+                  <Home className="h-6 w-6 text-green-600" />
+                </div>
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-600">For Sale</p>
+                  <p className="text-2xl font-bold text-gray-900">{stats.totalForSale}</p>
+                </div>
               </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">For Sale</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.totalForSale}</p>
+            </div>
+
+            <div className="bg-white rounded-lg shadow-sm border p-6 hover:shadow-md transition-shadow" style={{ minWidth: 260, flex: '0 0 auto' }}>
+              <div className="flex items-center">
+                <div className="p-3 bg-blue-100 rounded-lg">
+                  <Users className="h-6 w-6 text-blue-600" />
+                </div>
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-600">For Rent</p>
+                  <p className="text-2xl font-bold text-gray-900">{stats.totalForRent}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-lg shadow-sm border p-6 hover:shadow-md transition-shadow" style={{ minWidth: 260, flex: '0 0 auto' }}>
+              <div className="flex items-center">
+                <div className="p-3 bg-purple-100 rounded-lg">
+                  <Star className="h-6 w-6 text-purple-600" />
+                </div>
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-600">Sold</p>
+                  <p className="text-2xl font-bold text-gray-900">{stats.totalSold}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-lg shadow-sm border p-6 hover:shadow-md transition-shadow" style={{ minWidth: 260, flex: '0 0 auto' }}>
+              <div className="flex items-center">
+                <div className="p-3 bg-orange-100 rounded-lg">
+                  <BarChart3 className="h-6 w-6 text-orange-600" />
+                </div>
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-600">Rented</p>
+                  <p className="text-2xl font-bold text-gray-900">{stats.totalRented}</p>
+                </div>
               </div>
             </div>
           </div>
+        )}
 
-          <div className="bg-white p-6 rounded-lg shadow-md">
-            <div className="flex items-center">
-              <div className="p-3 bg-blue-100 rounded-lg">
-                <DollarSign className="text-blue-600" size={24} />
+        {/* Price Analysis */}
+        {stats && (stats.averageSalePrice || stats.averageRentPrice) && (
+          <div className="flex flex-row flex-wrap items-stretch gap-4" style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'stretch' }}>
+            <div className="bg-white rounded-lg shadow-sm border p-6" style={{ flex: '1 1 320px', minWidth: 300 }}>
+              <div className="flex items-center mb-4">
+                <div className="p-3 bg-green-100 rounded-lg">
+                  <DollarSign className="h-6 w-6 text-green-600" />
+                </div>
+                <h3 className="ml-3 text-lg font-semibold text-gray-900">Average Sale Price</h3>
               </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">For Rent</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.totalForRent}</p>
+              <p className="text-3xl font-bold text-green-600 mb-2">
+                {formatPrice(stats.averageSalePrice)}
+              </p>
+              <p className="text-gray-600">Based on {stats.totalForSale} properties for sale</p>
+            </div>
+
+            <div className="bg-white rounded-lg shadow-sm border p-6" style={{ flex: '1 1 320px', minWidth: 300 }}>
+              <div className="flex items-center mb-4">
+                <div className="p-3 bg-blue-100 rounded-lg">
+                  <Home className="h-6 w-6 text-blue-600" />
+                </div>
+                <h3 className="ml-3 text-lg font-semibold text-gray-900">Average Rent Price</h3>
               </div>
+              <p className="text-3xl font-bold text-blue-600 mb-2">
+                {formatPrice(stats.averageRentPrice)}
+              </p>
+              <p className="text-gray-600">Based on {stats.totalForRent} properties for rent</p>
             </div>
           </div>
+        )}
 
-          <div className="bg-white p-6 rounded-lg shadow-md">
-            <div className="flex items-center">
+        {/* City Statistics */}
+        {stats && stats.cityStatistics && stats.cityStatistics.length > 0 && (
+          <div className="bg-white rounded-lg shadow-sm border p-6">
+            <div className="flex items-center mb-6">
               <div className="p-3 bg-purple-100 rounded-lg">
-                <TrendingUp className="text-purple-600" size={24} />
+                <MapPin className="h-6 w-6 text-purple-600" />
               </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Sold</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.totalSold}</p>
-              </div>
+              <h3 className="ml-3 text-lg font-semibold text-gray-900">Properties by City</h3>
+            </div>
+            <div className="gap-3" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+              {stats.cityStatistics.slice(0, 6).map(([city, count]) => (
+                <div key={city} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg" style={{ minWidth: 220, flex: '0 0 auto' }}>
+                  <div>
+                    <h4 className="font-medium text-gray-900">{city}</h4>
+                    <p className="text-sm text-gray-600">{count} properties</p>
+                  </div>
+                  <div className="p-2 bg-purple-100 rounded-lg">
+                    <Building2 className="h-5 w-5 text-purple-600" />
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
+        )}
 
-          <div className="bg-white p-6 rounded-lg shadow-md">
-            <div className="flex items-center">
-              <div className="p-3 bg-orange-100 rounded-lg">
-                <BarChart3 className="text-orange-600" size={24} />
+        {/* AI Features Section */}
+        <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg shadow-sm p-6">
+          <div className="flex items-center mb-4">
+            <div className="p-3 bg-white/20 rounded-lg">
+              <Brain className="h-6 w-6 text-white" />
+            </div>
+            <div>
+              <h3 className="ml-3 text-xl font-bold text-white">AI-Powered Intelligence</h3>
+              <p className="ml-3 text-blue-100">Advanced analytics and insights</p>
+            </div>
+          </div>
+          <div className="gap-3" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12, alignItems: 'stretch' }}>
+            <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4">
+              <div className="flex items-center mb-3">
+                <div className="p-2 bg-white/20 rounded-lg">
+                  <Target className="h-5 w-5 text-white" />
+                </div>
+                <h4 className="ml-2 font-semibold text-white">Property Analysis</h4>
               </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Rented</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.totalRented}</p>
+              <p className="text-blue-100 text-sm">AI analyzes each property for market value and recommendations</p>
+            </div>
+            <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4">
+              <div className="flex items-center mb-3">
+                <div className="p-2 bg-white/20 rounded-lg">
+                  <TrendingUp className="h-5 w-5 text-white" />
+                </div>
+                <h4 className="ml-2 font-semibold text-white">Market Insights</h4>
               </div>
+              <p className="text-blue-100 text-sm">Real-time market analysis and trends for any city</p>
+            </div>
+            <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4">
+              <div className="flex items-center mb-3">
+                <div className="p-2 bg-white/20 rounded-lg">
+                  <Zap className="h-5 w-5 text-white" />
+                </div>
+                <h4 className="ml-2 font-semibold text-white">Lead Scoring</h4>
+              </div>
+              <p className="text-blue-100 text-sm">AI automatically scores leads based on property interest</p>
             </div>
           </div>
         </div>
-      )}
 
-      {/* Price Analysis */}
-      {stats && (stats.averageSalePrice || stats.averageRentPrice) && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-          <div className="bg-white p-6 rounded-lg shadow-md">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <DollarSign size={20} />
-              Average Sale Price
-            </h3>
-            <p className="text-3xl font-bold text-green-600">
-              {formatPrice(stats.averageSalePrice)}
-            </p>
-            <p className="text-sm text-gray-600 mt-2">Based on {stats.totalForSale} properties for sale</p>
+        {/* Properties List */}
+        <div className="bg-white rounded-lg shadow-sm border p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-900">All Properties</h3>
+            { (hasRole('ROLE_MANAGER') || hasRole('ROLE_ADMIN')) && (
+              <button
+                onClick={() => navigate('/properties/new')}
+                className="inline-flex items-center px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Add Property
+              </button>
+            )}
           </div>
-
-          <div className="bg-white p-6 rounded-lg shadow-md">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <Home size={20} />
-              Average Rent Price
-            </h3>
-            <p className="text-3xl font-bold text-blue-600">
-              {formatPrice(stats.averageRentPrice)}
-            </p>
-            <p className="text-sm text-gray-600 mt-2">Based on {stats.totalForRent} properties for rent</p>
-          </div>
+          <PropertyList
+            onEdit={canManage ? (property) => handleEditProperty(property) : undefined}
+            onDelete={canManage ? async (property) => {
+              try {
+                await propertyService.deleteProperty(property.id);
+                loadStats();
+              } catch (e) {
+                console.error('Failed to delete property', e);
+                throw e;
+              }
+            } : undefined}
+          />
         </div>
-      )}
 
-      {/* City Statistics */}
-      {stats && stats.cityStatistics && stats.cityStatistics.length > 0 && (
-        <div className="bg-white p-6 rounded-lg shadow-md mb-8">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <MapPin size={20} />
-            Properties by City
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {stats.cityStatistics.slice(0, 6).map(([city, count], index) => (
-              <div key={city} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                <span className="font-medium text-gray-900">{city}</span>
-                <span className="text-sm text-gray-600">{count} properties</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* AI Features Section */}
-      <div className="bg-gradient-to-r from-purple-50 to-blue-50 p-6 rounded-lg mb-8">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-          <Brain size={20} />
-          AI-Powered Features
-        </h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-white p-4 rounded-lg">
-            <h4 className="font-medium text-gray-900 mb-2">Property Analysis</h4>
-            <p className="text-sm text-gray-600">AI analyzes each property for market value, lead scoring, and recommendations</p>
-          </div>
-          <div className="bg-white p-4 rounded-lg">
-            <h4 className="font-medium text-gray-900 mb-2">Market Insights</h4>
-            <p className="text-sm text-gray-600">Get real-time market analysis and trends for any city or region</p>
-          </div>
-          <div className="bg-white p-4 rounded-lg">
-            <h4 className="font-medium text-gray-900 mb-2">Lead Scoring</h4>
-            <p className="text-sm text-gray-600">AI automatically scores leads based on property interest and customer profile</p>
-          </div>
-        </div>
+        {/* Property Form Modal */}
+        {showPropertyForm && (
+          <PropertyForm
+            property={selectedProperty}
+            onClose={handleCloseForm}
+          />
+        )}
       </div>
-
-      {/* Properties List */}
-      <PropertyList />
-
-      {/* Property Form Modal */}
-      {showPropertyForm && (
-        <PropertyForm
-          property={selectedProperty}
-          onClose={handleCloseForm}
-        />
-      )}
     </div>
   );
 };
 
 export default PropertyDashboard;
-

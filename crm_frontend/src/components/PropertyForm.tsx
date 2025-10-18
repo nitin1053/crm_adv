@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
+import ReactDOM from 'react-dom';
 import { propertyService } from '../services/propertyService';
 import { PropertyRequest, PropertyResponse, PropertyType, PropertyStatus } from '../types';
-import { X, DollarSign, MapPin, Bed, Bath, Square, Image, Link, FileText } from 'lucide-react';
+import { X, DollarSign, MapPin, Bed, Bath, Square, Image, FileText } from 'lucide-react';
 
 type PropertyFormData = {
   title: string;
@@ -27,16 +28,28 @@ type PropertyFormData = {
 interface PropertyFormProps {
   property?: PropertyResponse | null;
   onClose: () => void;
+  isModal?: boolean;
 }
 
-const PropertyForm: React.FC<PropertyFormProps> = ({ property, onClose }) => {
+const PropertyForm: React.FC<PropertyFormProps> = ({ property, onClose, isModal = true }) => {
   const [error, setError] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
+  
+  useEffect(() => {
+    if (!isModal) return;
+    // Lock body scroll while modal is open
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [isModal]);
 
   const {
     register,
     handleSubmit,
     formState: { errors },
+    setFocus,
   } = useForm<PropertyFormData>({
     defaultValues: property ? {
       title: property.title,
@@ -61,6 +74,11 @@ const PropertyForm: React.FC<PropertyFormProps> = ({ property, onClose }) => {
       status: PropertyStatus.FOR_SALE,
     },
   });
+
+  useEffect(() => {
+    // Focus first field on open
+    setFocus('title');
+  }, [setFocus]);
 
   const validateForm = (data: PropertyFormData): string | null => {
     if (!data.title.trim()) return 'Title is required';
@@ -127,9 +145,20 @@ const PropertyForm: React.FC<PropertyFormProps> = ({ property, onClose }) => {
     }
   };
 
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+  const modal = (
+    <div
+      className={isModal ? "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50" : "min-h-screen flex items-start justify-center p-4"}
+      style={isModal ? { overflowY: 'auto', WebkitOverflowScrolling: 'touch' as any } : undefined}
+    >
+      <div
+        className="bg-white rounded-lg shadow-xl max-w-4xl w-full"
+        style={{
+          maxHeight: isModal ? '90vh' : undefined,
+          overflowY: isModal ? 'auto' : undefined,
+          WebkitOverflowScrolling: isModal ? ('touch' as any) : undefined,
+          overscrollBehavior: isModal ? 'contain' : undefined
+        }}
+      >
         <div className="flex items-center justify-between p-6 border-b">
           <h2 className="text-2xl font-bold text-gray-900">
             {property ? 'Edit Property' : 'Add New Property'}
@@ -472,6 +501,12 @@ const PropertyForm: React.FC<PropertyFormProps> = ({ property, onClose }) => {
       </div>
     </div>
   );
+
+  // Render via portal to ensure it overlays content regardless of parent stacking context
+  if (isModal && typeof document !== 'undefined') {
+    return ReactDOM.createPortal(modal, document.body);
+  }
+  return modal;
 };
 
 export default PropertyForm;

@@ -8,6 +8,8 @@ import Dashboard from './components/Dashboard';
 import CustomerList from './components/CustomerList';
 import PropertyDashboard from './components/PropertyDashboard';
 import ProtectedRoute from './components/ProtectedRoute';
+import PropertyForm from './components/PropertyForm';
+import PropertyDetails from './components/PropertyDetails';
 
 const AppRoutes: React.FC = () => {
   const { isAuthenticated } = useAuth();
@@ -52,6 +54,26 @@ const AppRoutes: React.FC = () => {
                 <PropertyDashboard />
               </ProtectedRoute>
             } 
+          />
+          <Route
+            path="/properties/new"
+            element={
+              <ProtectedRoute>
+                <div style={{ minHeight: '100vh', background: '#f9fafb' }}>
+                  <div style={{ maxWidth: 960, margin: '0 auto', padding: '24px 16px' }}>
+                    <PropertyForm isModal={false} onClose={() => window.history.back()} />
+                  </div>
+                </div>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/properties/:id"
+            element={
+              <ProtectedRoute>
+                <PropertyDetails />
+              </ProtectedRoute>
+            }
           />
           <Route 
             path="/" 

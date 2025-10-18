@@ -1,13 +1,19 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { propertyService } from '../services/propertyService';
 import { PropertyResponse, PropertyFilters, PropertyType, PropertyStatus } from '../types';
-import { Search, Filter, MapPin, Bed, Bath, Square, DollarSign, Eye, Edit, Trash2, Brain } from 'lucide-react';
+import { Search, Filter, MapPin, Bed, Bath, Square, Eye, Edit, Trash2, Brain, Heart } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
 
-const PropertyList: React.FC = () => {
+type PropertyListProps = {
+  onView?: (property: PropertyResponse) => void;
+  onEdit?: (property: PropertyResponse) => void;
+  onDelete?: (property: PropertyResponse) => Promise<void> | void;
+};
+
+const PropertyList: React.FC<PropertyListProps> = ({ onView, onEdit, onDelete }) => {
   const [properties, setProperties] = useState<PropertyResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [currentPage, setCurrentPage] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
   const [totalElements, setTotalElements] = useState(0);
   const [searchTerm, setSearchTerm] = useState('');
@@ -19,7 +25,84 @@ const PropertyList: React.FC = () => {
     sortDir: 'desc'
   });
 
-  const loadProperties = async () => {
+  const [favoriteIds, setFavoriteIds] = useState<number[]>([]);
+  const [favoritesOnly, setFavoritesOnly] = useState(false);
+
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  // Load favorites from localStorage
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('favoriteProperties');
+      if (raw) setFavoriteIds(JSON.parse(raw));
+    } catch {}
+  }, []);
+
+  const toggleFavorite = (id: number) => {
+    setFavoriteIds(prev => {
+      const exists = prev.includes(id);
+      const next = exists ? prev.filter(x => x !== id) : [...prev, id];
+      try { localStorage.setItem('favoriteProperties', JSON.stringify(next)); } catch {}
+      return next;
+    });
+  };
+
+  // Initialize filters/search from URL on first load
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const q = params.get('q') || '';
+    const page = parseInt(params.get('page') || '0', 10);
+    const size = parseInt(params.get('size') || '12', 10);
+    const ptRaw = params.get('propertyType') || undefined;
+    const stRaw = params.get('status') || undefined;
+    const validPT = Object.values(PropertyType) as string[];
+    const validST = Object.values(PropertyStatus) as string[];
+    const propertyType = ptRaw && validPT.includes(ptRaw) ? (ptRaw as PropertyType) : undefined;
+    const status = stRaw && validST.includes(stRaw) ? (stRaw as PropertyStatus) : undefined;
+    const city = params.get('city') || undefined;
+    const stateParam = params.get('state') || undefined;
+    const minPrice = params.get('minPrice') ? Number(params.get('minPrice')) : undefined;
+    const maxPrice = params.get('maxPrice') ? Number(params.get('maxPrice')) : undefined;
+    const minBedrooms = params.get('minBedrooms') ? Number(params.get('minBedrooms')) : undefined;
+    const minBathrooms = params.get('minBathrooms') ? Number(params.get('minBathrooms')) : undefined;
+
+    setSearchTerm(q);
+    setFilters(prev => ({
+      ...prev,
+      page: isNaN(page) ? 0 : page,
+      size: isNaN(size) ? 12 : size,
+      propertyType,
+      status,
+      city,
+      state: stateParam,
+      minPrice,
+      maxPrice,
+      minBedrooms,
+      minBathrooms
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Keep URL in sync with filters and search term
+  useEffect(() => {
+    const qs = new URLSearchParams();
+    if (searchTerm) qs.set('q', searchTerm);
+    if (filters.page !== undefined) qs.set('page', String(filters.page));
+    if (filters.size !== undefined) qs.set('size', String(filters.size));
+    if (filters.propertyType) qs.set('propertyType', filters.propertyType);
+    if (filters.status) qs.set('status', filters.status);
+    if (filters.city) qs.set('city', filters.city);
+    if (filters.state) qs.set('state', filters.state);
+    if (filters.minPrice !== undefined) qs.set('minPrice', String(filters.minPrice));
+    if (filters.maxPrice !== undefined) qs.set('maxPrice', String(filters.maxPrice));
+    if (filters.minBedrooms !== undefined) qs.set('minBedrooms', String(filters.minBedrooms));
+    if (filters.minBathrooms !== undefined) qs.set('minBathrooms', String(filters.minBathrooms));
+
+    navigate({ pathname: location.pathname, search: `?${qs.toString()}` }, { replace: true });
+  }, [filters, searchTerm, navigate, location.pathname]);
+
+  const loadProperties = useCallback(async () => {
     try {
       setLoading(true);
       const data = await propertyService.getProperties(filters);
@@ -33,13 +116,14 @@ const PropertyList: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [filters]);
 
   const handleSearch = async () => {
     if (searchTerm.trim()) {
       try {
         setLoading(true);
-        const data = await propertyService.searchProperties(searchTerm, currentPage, 12);
+        setFilters(prev => ({ ...prev, page: 0 }));
+        const data = await propertyService.searchProperties(searchTerm, 0, filters.size || 12);
         setProperties(data.content);
         setTotalPages(data.totalPages);
         setTotalElements(data.totalElements);
@@ -61,12 +145,46 @@ const PropertyList: React.FC = () => {
       [key]: value,
       page: 0 // Reset to first page when filters change
     }));
-    setCurrentPage(0);
   };
 
   const handlePageChange = (page: number) => {
-    setCurrentPage(page);
     setFilters(prev => ({ ...prev, page }));
+  };
+
+  const handleClearFilters = () => {
+    setFilters({ page: 0, size: 12, sortBy: 'createdAt', sortDir: 'desc' });
+    setSearchTerm('');
+  };
+
+  const getPageNumbers = () => {
+    const total = totalPages;
+    const current = filters.page || 0;
+    const range: (number | string)[] = [];
+    const delta = 2;
+    const left = Math.max(0, current - delta);
+    const right = Math.min(total - 1, current + delta);
+
+    for (let i = 0; i < total; i++) {
+      if (i === 0 || i === total - 1 || (i >= left && i <= right)) {
+        range.push(i);
+      }
+    }
+
+    const pages: (number | string)[] = [];
+    let prev: number | undefined;
+    for (const p of range) {
+      if (typeof prev === 'number') {
+        if ((p as number) - prev === 2) {
+          pages.push(prev + 1);
+        } else if ((p as number) - prev > 2) {
+          pages.push('...');
+        }
+      }
+      pages.push(p);
+      prev = p as number;
+    }
+
+    return pages;
   };
 
   const formatPrice = (price: number | string | undefined) => {
@@ -112,7 +230,9 @@ const PropertyList: React.FC = () => {
 
   useEffect(() => {
     loadProperties();
-  }, [filters]);
+  }, [loadProperties]);
+
+  const displayedProperties = favoritesOnly ? properties.filter(p => favoriteIds.includes(p.id)) : properties;
 
   if (loading && properties.length === 0) {
     return (
@@ -123,8 +243,8 @@ const PropertyList: React.FC = () => {
   }
 
   return (
-    <div className="property-list-container">
-      <div className="property-list-header">
+    <div className="space-y-6">
+      <div>
         <h2 className="text-2xl font-bold text-gray-900 mb-6">Properties</h2>
         
         {/* Search and Filter Controls */}
@@ -137,7 +257,7 @@ const PropertyList: React.FC = () => {
                 placeholder="Search properties..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                 className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>
@@ -154,6 +274,19 @@ const PropertyList: React.FC = () => {
               <Filter size={16} />
               Filters
             </button>
+            <button
+              onClick={handleClearFilters}
+              className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              Clear
+            </button>
+            <button
+              onClick={() => setFavoritesOnly(v => !v)}
+              className={`px-4 py-2 border rounded-lg transition-colors ${favoritesOnly ? 'bg-yellow-100 border-yellow-300' : 'border-gray-300 hover:bg-gray-50'}`}
+              aria-pressed={favoritesOnly}
+            >
+              {favoritesOnly ? 'Showing Favorites' : 'Favorites Only'}
+            </button>
           </div>
 
           {/* Advanced Filters */}
@@ -163,12 +296,14 @@ const PropertyList: React.FC = () => {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Property Type</label>
                 <select
                   value={filters.propertyType || ''}
-                  onChange={(e) => handleFilterChange('propertyType', e.target.value || undefined)}
+                  onChange={(e) => handleFilterChange('propertyType', e.target.value ? (e.target.value as PropertyType) : undefined)}
                   className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">All Types</option>
-                  {Object.values(PropertyType).map(type => (
-                    <option key={type} value={type}>{formatPropertyType(type)}</option>
+                  {Object.values(PropertyType)
+                    .filter((v) => typeof v === 'string')
+                    .map(type => (
+                      <option key={type as string} value={type as string}>{formatPropertyType(type as PropertyType)}</option>
                   ))}
                 </select>
               </div>
@@ -177,12 +312,14 @@ const PropertyList: React.FC = () => {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
                 <select
                   value={filters.status || ''}
-                  onChange={(e) => handleFilterChange('status', e.target.value || undefined)}
+                  onChange={(e) => handleFilterChange('status', e.target.value ? (e.target.value as PropertyStatus) : undefined)}
                   className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">All Status</option>
-                  {Object.values(PropertyStatus).map(status => (
-                    <option key={status} value={status}>{formatStatus(status)}</option>
+                  {Object.values(PropertyStatus)
+                    .filter((v) => typeof v === 'string')
+                    .map(status => (
+                      <option key={status as string} value={status as string}>{formatStatus(status as PropertyStatus)}</option>
                   ))}
                 </select>
               </div>
@@ -261,26 +398,30 @@ const PropertyList: React.FC = () => {
 
         {/* Results Summary */}
         <div className="mb-4 text-sm text-gray-600">
-          Showing {properties.length} of {totalElements} properties
+          Showing {favoritesOnly ? displayedProperties.length : properties.length} of {totalElements} properties
         </div>
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4">
-          {error}
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4 flex items-center justify-between">
+          <span>{error}</span>
+          <button onClick={loadProperties} className="ml-4 px-3 py-1 text-sm bg-red-100 text-red-800 rounded hover:bg-red-200">Retry</button>
         </div>
       )}
 
       {/* Properties Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-        {properties.map((property) => (
+        {displayedProperties.map((property) => (
           <div key={property.id} className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow">
             {/* Property Image */}
-            <div className="relative h-48 bg-gray-200">
+            <div
+              className="relative h-48 bg-gray-200 cursor-pointer"
+              onClick={() => (onView ? onView(property) : navigate(`/properties/${property.id}`))}
+            >
               {property.imageUrl ? (
                 <img
                   src={property.imageUrl}
-                  alt={property.title}
+                  alt={property.title || "Property image"}
                   className="w-full h-full object-cover"
                 />
               ) : (
@@ -305,11 +446,24 @@ const PropertyList: React.FC = () => {
                   </span>
                 </div>
               )}
+
+              {/* Favorite Toggle */}
+              <button
+                onClick={(e) => { e.stopPropagation(); toggleFavorite(property.id); }}
+                aria-label="Toggle favorite"
+                className="absolute bottom-2 right-2 p-1 rounded-full bg-white/80 hover:bg-white shadow"
+                title="Favorite"
+              >
+                <Heart size={16} className={favoriteIds.includes(property.id) ? 'text-red-600' : 'text-gray-300'} />
+              </button>
             </div>
 
             {/* Property Details */}
             <div className="p-4">
-              <h3 className="text-lg font-semibold text-gray-900 mb-2 line-clamp-2">
+              <h3
+                className="text-lg font-semibold text-gray-900 mb-2 line-clamp-2 cursor-pointer"
+                onClick={() => (onView ? onView(property) : navigate(`/properties/${property.id}`))}
+              >
                 {property.title}
               </h3>
               
@@ -325,7 +479,7 @@ const PropertyList: React.FC = () => {
                   <Bath size={14} className="mr-1" />
                   <span className="mr-3">{property.bathrooms}</span>
                   <Square size={14} className="mr-1" />
-                  <span>{property.squareFeet.toLocaleString()} sq ft</span>
+                  <span>{property.squareFeet ? property.squareFeet.toLocaleString() : '—'} sq ft</span>
                 </div>
               </div>
 
@@ -348,14 +502,38 @@ const PropertyList: React.FC = () => {
 
               {/* Action Buttons */}
               <div className="mt-4 flex gap-2">
-                <button className="flex-1 px-3 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition-colors flex items-center justify-center gap-1">
+                <button
+                  onClick={() => (onView ? onView(property) : navigate(`/properties/${property.id}`))}
+                  aria-label="View property"
+                  className="flex-1 px-3 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition-colors flex items-center justify-center gap-1"
+                >
                   <Eye size={14} />
                   View
                 </button>
-                <button className="px-3 py-2 border border-gray-300 text-gray-700 text-sm rounded hover:bg-gray-50 transition-colors">
+                <button
+                  onClick={() => onEdit?.(property)}
+                  aria-label="Edit property"
+                  title="Edit"
+                  className="px-3 py-2 border border-gray-300 text-gray-700 text-sm rounded hover:bg-gray-50 transition-colors"
+                >
                   <Edit size={14} />
                 </button>
-                <button className="px-3 py-2 border border-red-300 text-red-700 text-sm rounded hover:bg-red-50 transition-colors">
+                <button
+                  onClick={async () => {
+                    if (!onDelete) return;
+                    const ok = window.confirm('Delete this property? This action cannot be undone.');
+                    if (!ok) return;
+                    try {
+                      await onDelete(property);
+                      await loadProperties();
+                    } catch (e) {
+                      setError('Failed to delete property');
+                    }
+                  }}
+                  aria-label="Delete property"
+                  title="Delete"
+                  className="px-3 py-2 border border-red-300 text-red-700 text-sm rounded hover:bg-red-50 transition-colors"
+                >
                   <Trash2 size={14} />
                 </button>
               </div>
@@ -369,21 +547,26 @@ const PropertyList: React.FC = () => {
         <div className="mt-8 flex justify-center">
           <div className="flex gap-2">
             <button
-              onClick={() => handlePageChange(currentPage - 1)}
-              disabled={currentPage === 0}
+              onClick={() => handlePageChange((filters.page || 0) - 1)}
+              disabled={(filters.page || 0) === 0}
               className="px-3 py-2 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Previous
             </button>
-            
-            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-              const page = i;
+
+            {getPageNumbers().map((item, idx) => {
+              if (item === '...') {
+                return (
+                  <span key={`ellipsis-${idx}`} className="px-3 py-2 text-gray-500">…</span>
+                );
+              }
+              const page = item as number;
               return (
                 <button
                   key={page}
                   onClick={() => handlePageChange(page)}
                   className={`px-3 py-2 border rounded ${
-                    currentPage === page
+                    (filters.page || 0) === page
                       ? 'bg-blue-600 text-white border-blue-600'
                       : 'border-gray-300 hover:bg-gray-50'
                   }`}
@@ -392,10 +575,10 @@ const PropertyList: React.FC = () => {
                 </button>
               );
             })}
-            
+
             <button
-              onClick={() => handlePageChange(currentPage + 1)}
-              disabled={currentPage >= totalPages - 1}
+              onClick={() => handlePageChange((filters.page || 0) + 1)}
+              disabled={(filters.page || 0) >= totalPages - 1}
               className="px-3 py-2 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Next
@@ -404,7 +587,7 @@ const PropertyList: React.FC = () => {
         </div>
       )}
 
-      {properties.length === 0 && !loading && (
+      {displayedProperties.length === 0 && !loading && (
         <div className="text-center py-12">
           <Square size={48} className="mx-auto text-gray-400 mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">No properties found</h3>
@@ -416,4 +599,3 @@ const PropertyList: React.FC = () => {
 };
 
 export default PropertyList;
-
